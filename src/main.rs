@@ -12,6 +12,7 @@ use std::{
 use swayipc;
 
 mod battery;
+mod brightness;
 mod end_session;
 mod logind;
 mod monitor_labels;
@@ -219,22 +220,13 @@ impl Manager {
         );
 
         if let Some(dim_timeout_sec) = times.dim {
-            let idle_brightness = self.power_settings.idle_brightness();
-            let action = format!(
-                r#"
-                export curr_brightness=$(light)
-                echo $curr_brightness | tee $XDG_RUNTIME_DIR/screen_brightness_old.var
-                if [ 1 -eq "$(echo "${{curr_brightness}} > {idle_brightness}" | bc)" ]; then
-                    light -S {idle_brightness}
-                fi
-                "#,
-            );
-
-            // Dim screen to $idle_brightness when idle dim timeout hit
-            let mut swayidle_dim_timeout_args = Self::get_timeout_cmd(dim_timeout_sec, &action);
-            let mut swayidle_dim_resume_args = Self::get_resume_cmd(&format!(
-                "light -S $(cat $XDG_RUNTIME_DIR/screen_brightness_old.var)"
-            ));
+            // Dim through org.gnome.Shell.Brightness (see [`brightness`]),
+            // which lowers the screen to idle-brightness and brings it back
+            // when the user comes back, unless they changed it meanwhile.
+            let mut swayidle_dim_timeout_args =
+                Self::get_timeout_cmd(dim_timeout_sec, &brightness::idle_dim_command(true));
+            let mut swayidle_dim_resume_args =
+                Self::get_resume_cmd(&brightness::idle_dim_command(false));
             args.append(&mut swayidle_dim_timeout_args);
             args.append(&mut swayidle_dim_resume_args);
         }
@@ -1163,6 +1155,11 @@ fn main() {
     // The lock screen's D-Bus interface, which gnome-flashback provides in
     // the X11 session. It runs in a thread of its own.
     screensaver::start();
+
+    // The screen-brightness interface and automatic brightness, which GNOME
+    // Shell (gnome-flashback in the X11 session) and gnome-settings-daemon
+    // provide. They run in a thread of their own.
+    brightness::start();
 
     let app = Application::new(Some("org.regolith.powerd"), ApplicationFlags::IS_SERVICE);
 

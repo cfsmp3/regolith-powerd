@@ -18,10 +18,10 @@ Architecture: any
 Depends:
  ${misc:Depends},
  libglib2.0-0,
+ libglib2.0-bin,
  swayidle,
  sway | sway-regolith,
  light,
- bc,
  gnome-session-bin,
  powermgmt-base,
  trawldb,
